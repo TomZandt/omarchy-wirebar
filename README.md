@@ -86,6 +86,19 @@ favorite set, right-click uses the most recently used tunnel.
 Keys in the panel: `↑`/`↓` select, `t` toggle, `a` add, `v` paste, `n` rename,
 `e` edit, `q` QR, `r` refresh, `Delete` delete, `Esc` close.
 
+## The forms
+
+Import, rename, edit, QR and delete open inline in the panel. These screenshots
+use made-up tunnels, reserved example addresses and throwaway keys.
+
+| Import | Rename | Edit |
+| --- | --- | --- |
+| ![Import as](screenshots/import-name.png) | ![Rename](screenshots/rename.png) | ![Edit](screenshots/edit.png) |
+
+| QR code | Delete |
+| --- | --- |
+| ![QR code](screenshots/qr.png) | ![Delete](screenshots/delete.png) |
+
 ## Settings
 
 Set with `omarchy bar set tzv.wirebar <key> <value>` or in `shell.json`.
@@ -95,6 +108,12 @@ Set with `omarchy bar set tzv.wirebar <key> <value>` or in `shell.json`.
 | `connection` | empty | Favorite tunnel (the star writes this) |
 | `refreshIntervalSec` | 10 | How often the tunnel list refreshes |
 | `pingHost` | empty | Address pinged through the tunnel; empty picks one automatically |
+
+## Command line
+
+`omarchy-shell wirebar form <name|rename|edit|qr|delete>` opens the panel on one
+of its forms, which is handy for keybindings. `omarchy-shell shell summon
+tzv.wirebar` and `hide` open and close the panel.
 
 ## Limits
 
