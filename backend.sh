@@ -45,7 +45,9 @@ wg_names() {
 has_tunnel() { local all; all="$(wg_names)"; grep -Fxq -- "$1" <<<"$all"; }
 is_active()  { local live; live="$(wg_names active)"; grep -Fxq -- "$1" <<<"$live"; }
 
-state_dir() { printf '%s/wirebar' "${XDG_RUNTIME_DIR:-/tmp}"; }
+# Per-user runtime directory only (never a shared, predictable /tmp path).
+runtime_dir() { printf '%s' "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"; }
+state_dir() { printf '%s/wirebar' "$(runtime_dir)"; }
 name_key()  { printf '%s' "$1" | sha256sum | cut -c1-16; }
 
 # Remember that WE are about to take this tunnel down (or rename/replace it), so the
@@ -93,7 +95,7 @@ cmd_import() {
 
   mark_expected "$name"
   umask 077
-  WB_TMP="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/wirebar.XXXXXX")" || die "Could not create a temp directory"
+  WB_TMP="$(mktemp -d "$(runtime_dir)/wirebar.XXXXXX")" || die "Could not create a temp directory"
   trap 'rm -rf "${WB_TMP:-}"' EXIT
   local conf="$WB_TMP/$name.conf"
 
@@ -287,7 +289,7 @@ print_conf() {
   done < <(printf '%s\n' "${peers//, /$'\n'}")
 }
 
-qr_dir() { printf '%s/wirebar' "${XDG_RUNTIME_DIR:-/tmp}"; }
+qr_dir() { state_dir; }
 
 cmd_qr() {
   local name="${1:-}"

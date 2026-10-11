@@ -535,7 +535,7 @@ Panel {
   // Clipboard -> a private temp file, so the backend can validate it like any other import.
   Process {
     id: clipProcess
-    command: ["sh", "-c", "umask 077; f=\"${XDG_RUNTIME_DIR:-/tmp}/wirebar-clip-$$.conf\"; if wl-paste --no-newline >\"$f\" 2>/dev/null && [ -s \"$f\" ]; then printf '%s' \"$f\"; else rm -f \"$f\"; exit 1; fi"]
+    command: ["sh", "-c", "umask 077; f=$(mktemp \"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/wirebar-clip.XXXXXX\") || exit 1; if wl-paste --no-newline >\"$f\" 2>/dev/null && [ -s \"$f\" ]; then printf '%s' \"$f\"; else rm -f \"$f\"; exit 1; fi"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {

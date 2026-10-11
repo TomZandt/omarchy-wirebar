@@ -121,6 +121,35 @@ Set with `omarchy bar set tzv.wirebar <key> <value>` or in `shell.json`.
 of its forms, which is handy for keybindings. `omarchy-shell shell summon
 tzv.wirebar` and `hide` open and close the panel.
 
+## What it runs and writes
+
+Wirebar has no background service and needs no privileges. Everything runs as
+your user.
+
+- **Runs:** `nmcli` for every tunnel action; `ping`, bound to the tunnel
+  interface, to the tunnel's DNS server or a host inside its AllowedIPs (or your
+  `pingHost`), only while the panel is open; `wl-copy` and `wl-paste` to copy a
+  value or import from the clipboard; `qrencode` for QR export, on request;
+  `omarchy-file-select` for the file chooser; `omarchy-notification-send` for
+  drop notifications; and `omarchy bar set` to save the favorite. It also reads
+  `/sys/class/net/<interface>/statistics/` for traffic.
+- **Changes NetworkManager only when you ask:** connect, disconnect, import,
+  rename, edit and delete, and only on WireGuard profiles you select. An import
+  refuses a name that any existing connection already uses.
+- **Writes one setting of its own:** `connection` (the favorite) on its own
+  entry in `~/.config/omarchy/shell.json`, through `omarchy bar set`. That
+  happens when you click a star, and automatically in two cases: the first
+  tunnel you import becomes the favorite, and importing a second tunnel pins
+  the lone one you already had. Nothing else in your configuration is touched.
+- **Temporary files:** a private (mode 700) folder under `$XDG_RUNTIME_DIR`
+  holding drop-notification records and the QR image while it is shown, plus
+  short-lived mode 600 files for a clipboard import. They are removed after use,
+  and the folder disappears at logout. Nothing is written to `/tmp`.
+- **Network:** no traffic of its own apart from that ping.
+
+Removing it with `omarchy plugin remove tzv.wirebar` deletes the plugin and its
+bar entry. Your WireGuard connections stay in NetworkManager.
+
 ## Limits
 
 - **No last-handshake time.** NetworkManager does not report it; `wg show`
