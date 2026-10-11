@@ -18,6 +18,8 @@
 #   backend.sh modify <name> <addr> <dns> <mtu>   edit address(es), DNS and MTU
 #   backend.sh qr <name>                  write a QR PNG into $XDG_RUNTIME_DIR, print its path
 #   backend.sh qr-clean                   delete any QR PNG
+#   backend.sh drop-notice <name> [secs]  tell the user a tunnel dropped, unless we caused it
+#                                         or another bar instance already told them
 set -uo pipefail
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
@@ -43,6 +45,43 @@ wg_names() {
 has_tunnel() { local all; all="$(wg_names)"; grep -Fxq -- "$1" <<<"$all"; }
 is_active()  { local live; live="$(wg_names active)"; grep -Fxq -- "$1" <<<"$live"; }
 
+state_dir() { printf '%s/wirebar' "${XDG_RUNTIME_DIR:-/tmp}"; }
+name_key()  { printf '%s' "$1" | sha256sum | cut -c1-16; }
+
+# Remember that WE are about to take this tunnel down (or rename/replace it), so the
+# "it dropped" notice is not raised for something the user just asked for. The record
+# lives on disk because every monitor has its own bar instance and they must agree.
+mark_expected() {
+  local d; d="$(state_dir)/expected"
+  mkdir -p -m 700 "$d" 2>/dev/null || return 0
+  date +%s >"$d/$(name_key "$1")" 2>/dev/null || true
+}
+
+# The tunnel is up again, so an earlier "we asked for this" note no longer applies: a drop
+# from here on is a surprise and should be announced.
+unmark_expected() { rm -f -- "$(state_dir)/expected/$(name_key "$1")" 2>/dev/null; }
+
+cmd_drop_notice() {
+  local name="${1:-}" window="${2:-30}" d key now stamp b
+  [[ -n $name ]] || die "usage: drop-notice <name> [window-seconds]"
+  [[ $window =~ ^[0-9]+$ ]] || window=30
+  d="$(state_dir)"; key="$(name_key "$name")"; now="$(date +%s)"
+
+  stamp="$(cat "$d/expected/$key" 2>/dev/null)"
+  [[ $stamp =~ ^[0-9]+$ ]] || stamp=0
+  (( now - stamp <= window )) && return 0          # we asked for this one
+
+  # Every bar instance (one per monitor) sees the same drop; the first to create the
+  # claim announces it. A claim from the current or previous minute also blocks, so two
+  # instances that straddle a minute boundary still agree.
+  mkdir -p -m 700 "$d/claims" 2>/dev/null || return 0
+  b=$(( now / 60 ))
+  [[ -e $d/claims/$key-$b || -e $d/claims/$key-$((b - 1)) ]] && return 0
+  mkdir "$d/claims/$key-$b" 2>/dev/null || return 0
+  find "$d/claims" -mindepth 1 -maxdepth 1 -mmin +10 -exec rm -rf {} + 2>/dev/null
+  omarchy-notification-send "WireGuard: $name disconnected" "The tunnel went down outside Wirebar." >/dev/null 2>&1 || true
+}
+
 cmd_import() {
   local src="${1:-}" name="${2:-}"
   [[ -n $src && -n $name ]] || die "usage: import <file|-> <name>"
@@ -52,6 +91,7 @@ cmd_import() {
   local existing; existing="$(nmcli -t -f NAME connection show)"
   grep -Fxq -- "$name" <<<"$existing" && die "A connection called $name already exists"
 
+  mark_expected "$name"
   umask 077
   WB_TMP="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/wirebar.XXXXXX")" || die "Could not create a temp directory"
   trap 'rm -rf "${WB_TMP:-}"' EXIT
@@ -96,10 +136,12 @@ cmd_switch() {
   has_tunnel "$name" || die "No tunnel called $name"
   local before=()
   while IFS= read -r other; do [[ -n $other ]] && before+=("$other"); done < <(wg_names active)
+  for other in "${before[@]}"; do [[ $other == "$name" ]] || mark_expected "$other"; done
 
   # New tunnel first, old ones second: if the new one fails, nothing was torn down.
   # (Already-up is fine: `up` is then a no-op and the others still get dropped.)
   out="$(nmcli connection up id "$name" 2>&1)" || die "Could not connect $name: ${out:-unknown error}"
+  unmark_expected "$name"
   local failed=""
   for other in "${before[@]}"; do
     [[ $other == "$name" ]] && continue
@@ -113,9 +155,14 @@ cmd_down() {
   local name="${1:-}" n
   [[ -n $name ]] || die "usage: down <name|all>"
   if [[ $name == all ]]; then
-    while IFS= read -r n; do [[ -n $n ]] && nmcli connection down id "$n" >/dev/null 2>&1; done < <(wg_names active)
+    while IFS= read -r n; do
+      [[ -n $n ]] || continue
+      mark_expected "$n"
+      nmcli connection down id "$n" >/dev/null 2>&1
+    done < <(wg_names active)
     echo "Disconnected all tunnels"
   else
+    mark_expected "$name"
     nmcli connection down id "$name" >/dev/null 2>&1 || die "Could not disconnect $name"
     echo "Disconnected $name"
   fi
@@ -130,6 +177,7 @@ cmd_rename() {
   has_tunnel "$old" || die "No tunnel called $old"
   [[ $new == "$old" ]] && return 0
   has_tunnel "$new" && die "A tunnel called $new already exists"
+  mark_expected "$old"
   nmcli connection modify id "$old" connection.id "$new" 2>&1 || die "Rename failed"
   echo "Renamed $old to $new"
 }
@@ -138,6 +186,7 @@ cmd_delete() {
   local name="${1:-}"
   [[ -n $name ]] || die "usage: delete <name>"
   has_tunnel "$name" || die "No tunnel called $name"
+  mark_expected "$name"
   nmcli connection delete id "$name" >/dev/null 2>&1 || die "Could not delete $name"
   echo "Deleted $name"
 }
@@ -267,5 +316,6 @@ case "$command" in
   modify) cmd_modify "$@" ;;
   qr) cmd_qr "$@" ;;
   qr-clean) cmd_qr_clean ;;
-  *) die "usage: backend.sh import|switch|down|rename|delete|modify|qr|qr-clean ..." ;;
+  drop-notice) cmd_drop_notice "$@" ;;
+  *) die "usage: backend.sh import|switch|down|rename|delete|modify|qr|qr-clean|drop-notice ..." ;;
 esac

@@ -31,7 +31,6 @@ Panel {
   property bool statusIsError: false
   property bool busy: false
   property var prevActive: ({})       // name -> true, for "dropped behind your back" notices
-  property var expectedDown: ({})     // name -> timestamp of a drop we caused ourselves
 
   // ---- inline forms ----------------------------------------------------
   property string mode: ""            // "" | "name" | "rename" | "edit" | "qr" | "delete"
@@ -84,24 +83,18 @@ Panel {
     tunnels = out
   }
 
-  // A tunnel that was up and is not, and that we did not take down, was dropped
-  // by something else (nmcli in a terminal, a NetworkManager restart, ...).
+  // A tunnel that was up and is not has dropped. Whether that was us (a switch, a disconnect,
+  // a delete) or something else is decided by the backend, because every monitor runs its own
+  // copy of this widget and all of them see the same drop: the backend remembers what we
+  // asked for and lets only one instance raise the notification.
   function notifyDrops(next) {
-    var now = Date.now()
     var live = {}
     for (var i = 0; i < next.length; i++) if (next[i].active) live[next[i].name] = true
+    var window = Math.max(30, Number(setting("refreshIntervalSec", 10)) * 2 + 10)
     for (var name in prevActive) {
-      if (live[name]) continue
-      var ours = expectedDown[name] !== undefined && now - expectedDown[name] < 20000
-      if (!ours) Quickshell.execDetached(["omarchy-notification-send", "WireGuard: " + name + " disconnected", "The tunnel went down outside Wirebar."])
+      if (!live[name]) Quickshell.execDetached(["bash", backend, "drop-notice", name, String(window)])
     }
     prevActive = live
-  }
-
-  function expectDown(name) {
-    var e = expectedDown
-    e[name] = Date.now()
-    expectedDown = e
   }
 
   function pickCurrent() {
@@ -285,13 +278,7 @@ Panel {
 
   function toggleTunnel(t) {
     if (!t) return
-    if (t.active) {
-      expectDown(t.name)
-      runBackend(["down", t.name])
-    } else {
-      for (var i = 0; i < tunnels.length; i++) if (tunnels[i].active) expectDown(tunnels[i].name)
-      runBackend(["switch", t.name])
-    }
+    runBackend([t.active ? "down" : "switch", t.name])
   }
 
   // Right-click on the bar icon: connect the favorite / last used tunnel, or drop the live one.
@@ -421,7 +408,6 @@ Panel {
     var name = current.name
     mode = ""
     selectedName = ""
-    expectDown(name)
     runBackend(["delete", name], function() { if (name === wanted) setFavorite("") })
   }
 
@@ -599,7 +585,6 @@ Panel {
         if (afterOk) afterOk()
       } else {
         root.say(String(actionErr.text || actionOut.text || "Command failed").trim(), true)
-        root.expectedDown = ({})   // nothing we asked for happened, so a real drop is still news
       }
       afterOk = null
       if (clipCleanup.path !== "") { Quickshell.execDetached(["rm", "-f", clipCleanup.path]); clipCleanup.path = "" }
