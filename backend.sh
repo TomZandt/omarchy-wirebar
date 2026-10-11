@@ -295,7 +295,7 @@ cmd_qr() {
   local name="${1:-}"
   [[ -n $name ]] || die "usage: qr <name>"
   has_tunnel "$name" || die "No tunnel called $name"
-  command -v qrencode >/dev/null 2>&1 || die "qrencode is not installed (pacman -S qrencode)"
+  command -v qrencode >/dev/null 2>&1 || die "QR export needs the qrencode package, which is not installed"
   local dir; dir="$(qr_dir)"
   umask 077
   mkdir -p -m 700 "$dir" || die "Could not create $dir"

@@ -143,8 +143,10 @@ your user.
   the lone one you already had. Nothing else in your configuration is touched.
 - **Temporary files:** a private (mode 700) folder under `$XDG_RUNTIME_DIR`
   holding drop-notification records and the QR image while it is shown, plus
-  short-lived mode 600 files for a clipboard import. They are removed after use,
-  and the folder disappears at logout. Nothing is written to `/tmp`.
+  short-lived mode 600 files for a clipboard import. The QR image and clipboard
+  files are deleted as soon as you are done with them; the few small
+  drop-notification records are cleared when the folder disappears at logout.
+  Nothing is written to `/tmp`.
 - **Network:** no traffic of its own apart from that ping.
 
 Removing it with `omarchy plugin remove tzv.wirebar` deletes the plugin and its
