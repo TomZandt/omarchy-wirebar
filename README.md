@@ -58,24 +58,30 @@ belong to NetworkManager and are not touched.
 The icon is bright while a tunnel is up and dimmed when none is.
 
 **Favorite.** Click the star on a tunnel row to make it the right-click
-target. With a single tunnel it is the favorite automatically. With no
-favorite set, right-click uses the most recently used tunnel.
+target. The first tunnel you add becomes the favorite, and adding a second one
+keeps a lone tunnel pinned, so right-click never quietly changes meaning. With
+no favorite set, right-click uses the most recently used tunnel.
 
 **Panel.**
 
 - Header switch connects or disconnects the selected tunnel. Connecting is
-  exclusive: the new tunnel comes up first, then every other WireGuard tunnel
-  goes down, so a broken profile never leaves you with no VPN.
+  exclusive: the new tunnel comes up first, and only once it is up do the other
+  WireGuard tunnels go down. A profile that fails to connect therefore leaves
+  your current tunnel untouched. There is no automatic rollback: if dropping an
+  old tunnel fails you get an error and both stay up.
 - Connected tunnels sort to the top.
 - Interface and peer details. Click a value to copy it.
-- While connected: live download/upload rates, a one-minute graph, byte totals
-  and ping through the tunnel (to the tunnel's DNS server, or a host inside its
-  first AllowedIPs; set `pingHost` to override). These sample only while the
-  panel is open.
+- While connected: live download/upload rates, a one-minute graph and byte
+  totals. Traffic is sampled whenever a tunnel is up, so the graph already has
+  history when you open the panel. Ping through the tunnel (to the tunnel's DNS
+  server, or a host inside its first AllowedIPs; set `pingHost` to override) runs
+  only while the panel is open, since it is the one probe that sends packets.
 - **Add tunnel** imports a `.conf` file; **Paste** imports one from the
   clipboard. You choose the name, because it becomes the interface name (up to
-  15 characters of `A-Z a-z 0-9 _ = + . -`). Imported tunnels are never
-  connected automatically.
+  15 characters of `A-Z a-z 0-9 _ = + . -`). NetworkManager itself briefly
+  activates a tunnel at import time, so Wirebar turns autoconnect off and
+  disconnects it straight away; if that step fails you are told. An existing
+  connection with the same name, of any type, is never touched.
 - **Rename**, **Edit** (address, DNS, MTU) and **Delete** (asks first).
 - **QR** shows the profile as a QR code for the WireGuard phone app. The code
   contains the private key, so it only appears when asked for, and the image is

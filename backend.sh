@@ -48,6 +48,9 @@ cmd_import() {
   [[ -n $src && -n $name ]] || die "usage: import <file|-> <name>"
   [[ $name =~ $NAME_RE ]] || die "Name must be 1-15 characters: letters, digits and _ = + . -"
   has_tunnel "$name" && die "A tunnel called $name already exists"
+  # A profile of any other type with this id would make the later by-id lookups ambiguous.
+  local existing; existing="$(nmcli -t -f NAME connection show)"
+  grep -Fxq -- "$name" <<<"$existing" && die "A connection called $name already exists"
 
   umask 077
   WB_TMP="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/wirebar.XXXXXX")" || die "Could not create a temp directory"
@@ -68,12 +71,22 @@ cmd_import() {
     die "This config uses PreUp/PostUp/PreDown/PostDown/SaveConfig/Table, which NetworkManager does not support. Import refused."
   fi
 
-  local out
+  local out uuid
   out="$(nmcli connection import type wireguard file "$conf" 2>&1)" || die "${out:-Import failed}"
-  # nmcli activates a WireGuard profile the moment it is imported. Imports must
-  # never connect on their own: turn autoconnect off and drop the fresh tunnel.
-  nmcli connection modify id "$name" connection.autoconnect no >/dev/null 2>&1 || true
-  nmcli connection down id "$name" >/dev/null 2>&1 || true
+  uuid="$(grep -oE '[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}' <<<"$out" | head -1)"
+  [[ -n $uuid ]] || uuid="$(nmcli -g connection.uuid connection show id "$name" 2>/dev/null | head -1)"
+  [[ -n $uuid ]] || die "Imported $name, but could not find it again to turn autoconnect off. Check it in the panel."
+
+  # nmcli activates a WireGuard profile the moment it is imported, so the tunnel is briefly up.
+  # Imports must never leave a tunnel connected: turn autoconnect off and drop it again, by
+  # UUID so only the profile we just created is touched, and say so if either step fails.
+  nmcli connection modify uuid "$uuid" connection.autoconnect no >/dev/null 2>&1 ||
+    die "Imported $name, but could not turn autoconnect off. Check it in the panel."
+  nmcli connection down uuid "$uuid" >/dev/null 2>&1 || true
+  local live; live="$(nmcli -t -f UUID connection show --active)"   # capture first: grep -q + pipefail misreads a match
+  if grep -Fxq -- "$uuid" <<<"$live"; then
+    die "Imported $name, but it is connected and could not be disconnected. Disconnect it from the panel."
+  fi
   echo "Imported $name (not connected)"
 }
 

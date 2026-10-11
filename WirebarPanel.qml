@@ -39,7 +39,7 @@ Panel {
   property bool pendingIsTemp: false  // pendingPath is a clipboard dump we must delete
   property string qrPath: ""
 
-  // ---- live numbers (sampled only while the panel is open) --------------
+  // ---- live numbers (traffic sampled whenever a tunnel is up; ping only while the panel is open) ----
   property var samples: []            // [{ t, rx, tx, down, up }], newest last
   property var pingHistory: []        // ms per probe, -1 for a lost one
 
@@ -272,13 +272,15 @@ Panel {
     pingProcess.running = true
   }
 
+  // Returns false when another action is still running and nothing was started.
   function runBackend(args, afterOk) {
-    if (actionProcess.running) return
+    if (actionProcess.running) return false
     busy = true
     say("", false)
     actionProcess.afterOk = afterOk || null
     actionProcess.command = ["bash", backend].concat(args)
     actionProcess.running = true
+    return true
   }
 
   function toggleTunnel(t) {
@@ -357,11 +359,23 @@ Panel {
     if (mode === "name") {
       var path = pendingPath
       var temp = pendingIsTemp
+      var before = tunnels.length
+      var onlyBefore = before === 1 && wanted === "" ? tunnels[0].name : ""
       pendingPath = ""
       pendingIsTemp = false
       mode = ""
       if (temp) clipCleanup.path = path
-      runBackend(["import", path, name], function() { selectedName = name })
+      var started = runBackend(["import", path, name], function() {
+        selectedName = name
+        // The first tunnel you add is the favorite. Adding a second one pins the lone tunnel
+        // you already had, so right-click does not quietly start meaning something else.
+        if (before === 0) setFavorite(name)
+        else if (onlyBefore !== "") setFavorite(onlyBefore)
+      })
+      if (!started && temp) {   // the private-key temp file must not wait for some later action
+        Quickshell.execDetached(["rm", "-f", path])
+        clipCleanup.path = ""
+      }
     } else if (mode === "rename") {
       var old = current ? current.name : ""
       mode = ""
@@ -405,11 +419,10 @@ Panel {
   function deleteTunnel() {
     if (!current) return
     var name = current.name
-    if (name === wanted) setFavorite("")
     mode = ""
     selectedName = ""
     expectDown(name)
-    runBackend(["delete", name])
+    runBackend(["delete", name], function() { if (name === wanted) setFavorite("") })
   }
 
   implicitWidth: button.implicitWidth
@@ -586,6 +599,7 @@ Panel {
         if (afterOk) afterOk()
       } else {
         root.say(String(actionErr.text || actionOut.text || "Command failed").trim(), true)
+        root.expectedDown = ({})   // nothing we asked for happened, so a real drop is still news
       }
       afterOk = null
       if (clipCleanup.path !== "") { Quickshell.execDetached(["rm", "-f", clipCleanup.path]); clipCleanup.path = "" }
@@ -927,7 +941,7 @@ Panel {
             }
 
             Text {
-              text: "Last minute while the panel is open · peak " + root.formatRate(root.peakRate())
+              text: "Last minute · peak " + root.formatRate(root.peakRate())
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
