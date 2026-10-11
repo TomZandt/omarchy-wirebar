@@ -54,6 +54,10 @@ Panel {
   readonly property string wanted: String(setting("connection", ""))
   readonly property var current: pickCurrent()
   readonly property bool connected: current !== null && current.active
+  // The tunnel list is rebuilt on every refresh, so `current` is a new object each time.
+  // Anything that should only reset when the selection really changes must watch these.
+  readonly property string currentName: current ? current.name : ""
+  readonly property string currentDevice: current ? current.device : ""
   readonly property var quick: quickTarget()
   readonly property bool anyActive: quick !== null && quick.active
   readonly property var peers: parsePeers(detail["wireguard.peers"])
@@ -243,9 +247,22 @@ Panel {
   }
 
   function sample() {
-    if (!current || !current.active || current.device === "" || statsProcess.running) return
-    statsProcess.command = ["sh", "-c", "cat /sys/class/net/\"$1\"/statistics/rx_bytes /sys/class/net/\"$1\"/statistics/tx_bytes", "sh", current.device]
-    statsProcess.running = true
+    if (!current || !current.active || currentDevice === "") return
+    var rx, tx
+    try {
+      rxFile.reload()
+      txFile.reload()
+      rx = Number(String(rxFile.text()).trim())
+      tx = Number(String(txFile.text()).trim())
+    } catch (e) { return }
+    if (!isFinite(rx) || !isFinite(tx)) return
+    var now = Date.now() / 1000
+    var prev = latest
+    var dt = prev ? now - prev.t : 0
+    var ok = prev && dt > 0 && dt < 15 && rx >= prev.rx && tx >= prev.tx
+    var next = samples.slice(-29)
+    next.push({ t: now, rx: rx, tx: tx, down: ok ? (rx - prev.rx) / dt : 0, up: ok ? (tx - prev.tx) / dt : 0 })
+    samples = next
   }
 
   function probe() {
@@ -399,11 +416,14 @@ Panel {
   implicitHeight: button.implicitHeight
 
   Component.onCompleted: refresh()
-  onCurrentChanged: {
+  onCurrentNameChanged: {
     detail = ({})
+    refreshDetail()
+  }
+  // A different interface (or none) means the old traffic history no longer applies.
+  onCurrentDeviceChanged: {
     samples = []
     pingHistory = []
-    refreshDetail()
     sample()
   }
   onOpenedChanged: {
@@ -413,7 +433,6 @@ Panel {
       Qt.callLater(function() { keyCatcher.forceActiveFocus() })
     } else {
       cancelForm()
-      samples = []
       pingHistory = []
     }
   }
@@ -437,9 +456,11 @@ Panel {
     onTriggered: root.refresh()
   }
 
+  // Traffic is sampled whenever a tunnel is up, so the graph has history the moment the
+  // panel opens. Ping is the only probe that leaves the machine, so it stays panel-only.
   Timer {
     interval: 2000
-    running: root.opened && root.connected
+    running: root.connected
     repeat: true
     triggeredOnStart: true
     onTriggered: root.sample()
@@ -466,23 +487,20 @@ Panel {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.parseDetail(text) }
   }
 
-  Process {
-    id: statsProcess
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var n = String(text || "").trim().split("\n")
-        if (n.length < 2 || n[0] === "") return
-        var now = Date.now() / 1000
-        var rx = Number(n[0]), tx = Number(n[1])
-        var prev = root.latest
-        var dt = prev ? now - prev.t : 0
-        var ok = prev && dt > 0 && dt < 15 && rx >= prev.rx && tx >= prev.tx
-        var next = root.samples.slice(-29)
-        next.push({ t: now, rx: rx, tx: tx, down: ok ? (rx - prev.rx) / dt : 0, up: ok ? (tx - prev.tx) / dt : 0 })
-        root.samples = next
-      }
-    }
+  FileView {
+    id: rxFile
+    path: root.currentDevice !== "" ? "/sys/class/net/" + root.currentDevice + "/statistics/rx_bytes" : ""
+    blockLoading: true
+    watchChanges: false
+    printErrors: false
+  }
+
+  FileView {
+    id: txFile
+    path: root.currentDevice !== "" ? "/sys/class/net/" + root.currentDevice + "/statistics/tx_bytes" : ""
+    blockLoading: true
+    watchChanges: false
+    printErrors: false
   }
 
   Process {
