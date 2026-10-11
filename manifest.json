@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "tzv.wirebar",
+  "name": "Wirebar",
+  "version": "1.0.0",
+  "author": "TZV",
+  "license": "MIT",
+  "description": "Wirebar: WireGuard tunnels in the Omarchy bar. Connect, switch, import, rename, edit and QR-export NetworkManager tunnels, with live traffic and ping. No root needed.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "WirebarPanel.qml"
+  },
+  "barWidget": {
+    "displayName": "Wirebar",
+    "description": "Left-click opens the tunnel manager; right-click connects your favorite (or last-used) tunnel, or disconnects the live one; middle-click refreshes.",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "connection": "",
+      "refreshIntervalSec": 10,
+      "pingHost": ""
+    },
+    "schema": [
+      {
+        "key": "connection",
+        "type": "string",
+        "label": "Connection name",
+        "defaultValue": "",
+        "description": "Favorite tunnel for right-click quick connect. Set with the star in the panel. Empty means the last-used tunnel."
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 2,
+        "max": 600,
+        "step": 1,
+        "defaultValue": 10
+      },
+      {
+        "key": "pingHost",
+        "type": "string",
+        "label": "Ping host",
+        "defaultValue": "",
+        "description": "Address pinged through the tunnel for the latency readout. Empty picks the tunnel's DNS server or a host inside its AllowedIPs."
+      }
+    ]
+  }
+}
