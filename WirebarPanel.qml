@@ -365,6 +365,18 @@ Panel {
     runBackend(["modify", name, addrField.text, dnsField.text, mtuField.text])
   }
 
+  // Open one of the inline forms directly (used by the `form` IPC command).
+  function showForm(which) {
+    if (which === "qr") showQr()
+    else if (which === "delete") { if (current) mode = "delete" }
+    else if (which === "name") {
+      pendingPath = ""
+      pendingIsTemp = false
+      nameField.text = "branch-office"
+      openForm("name")
+    } else openForm(which)   // "rename" | "edit"
+  }
+
   function showQr() {
     if (!current || actionProcess.running) return
     mode = "qr"
@@ -396,12 +408,25 @@ Panel {
   }
   onOpenedChanged: {
     if (opened) {
+      say("", false)   // never show a message left over from the last time it was open
       refresh()
       Qt.callLater(function() { keyCatcher.forceActiveFocus() })
     } else {
       cancelForm()
       samples = []
       pingHistory = []
+    }
+  }
+
+  // omarchy-shell wirebar form <name|rename|edit|qr|delete>
+  // Opens the panel on one of its inline forms: handy for keybindings and screenshots.
+  IpcHandler {
+    target: "wirebar"
+    function form(which: string): string {
+      if (["name", "rename", "edit", "qr", "delete"].indexOf(which) < 0) return "unknown form: " + which
+      root.open()
+      Qt.callLater(function() { root.showForm(which) })
+      return "ok"
     }
   }
 
