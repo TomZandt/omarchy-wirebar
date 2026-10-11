@@ -7,6 +7,10 @@ from a bar icon. No root, no sudo, no `wg-quick`.
 Wirebar is an unofficial community plugin. It is not affiliated with,
 endorsed by, or connected to the WireGuard project or Omarchy.
 
+![The Wirebar panel](preview.png)
+
+*The screenshot uses made-up tunnels and reserved example addresses.*
+
 ## How it works
 
 Tunnels are NetworkManager connection profiles. Wirebar lists every WireGuard
